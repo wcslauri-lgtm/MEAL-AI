@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.lajtinen.mealai</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>mealai</string>
+			</array>
+		</dict>
+	</array>
+	<key>OPENAI_API_KEY
+Open</key>
+	<string>$(OPENAI_API_KEY)</string>
+	<key>OPENAI_MODEL</key>
+	<string>$(OPENAI_MODEL)</string>
+	<key>OPENAI_ORG_ID</key>
+	<string> $(OPENAI_ORG_ID)</string>
+</dict>
+</plist>

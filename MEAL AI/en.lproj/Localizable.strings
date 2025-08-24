@@ -1,0 +1,52 @@
+/* General */
+"status.analyzing" = "Analyzing…";
+"error.prefix" = "Error:";
+
+/* Image placeholder */
+"image.none" = "No image selected";
+
+/* Results */
+"results.title" = "Analysis Result";
+"macro.carbs" = "Carbs";
+"macro.fat" = "Fat";
+"macro.proteins" = "Proteins";
+
+/* Buttons */
+"btn.take_photo" = "Take Photo";
+"btn.analyze" = "Analyze";
+"btn.analyzing" = "Analyzing…";
+"btn.pick" = "Choose";
+
+/* Copy / Sheet */
+"btn.show_reasoning" = "Show AI reasoning";
+"reasoning.title" = "AI reasoning";
+"reasoning.per100" = "Nutrition per 100 g:";
+
+/* A11y */
+"a11y.clear" = "Clear analysis";
+"a11y.run_shortcut" = "Run Shortcut";
+
+/* Hint */
+"hint.title" = "Additional hint (optional)";
+"hint.placeholder" = "e.g., “large plate, lots of rice, little sauce”";
+
+/* Settings */
+"settings.title" = "Settings";
+"settings.general" = "General";
+"settings.language" = "Language";
+"settings.quality" = "Quality";
+"settings.show_hint" = "Show hint field";
+
+"settings.shortcuts" = "Shortcuts";
+"settings.shortcut_enable" = "Enable Shortcut button";
+"settings.shortcut_name_placeholder" = "Shortcut name (exact)";
+
+"settings.howto_header" = "Tips";
+"settings.howto_photo" = "Tips for a good photo: shoot from above at 45–90°, include a size reference (fork/hand/packaging), good light, avoid motion blur. One dish per image works best.";
+"settings.hint_help" = "Hint field helps the model with context (e.g. portion size or hidden sauces).";
+
+/* Shortcut alerts */
+"shortcut.title" = "Shortcut";
+"shortcut.missing_name" = "Set a Shortcut name in Settings first.";
+"shortcut.invalid_url" = "Invalid Shortcuts URL.";
+"shortcut.failed_open" = "Shortcuts did not open. Ensure the shortcut exists and the name matches.";

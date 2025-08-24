@@ -1,0 +1,52 @@
+/* Yleiset */
+"status.analyzing" = "Analysoidaan…";
+"error.prefix" = "Virhe:";
+
+/* Kuva placeholder */
+"image.none" = "Ei kuvaa valittuna";
+
+/* Tulokset */
+"results.title" = "Analyysin tulos";
+"macro.carbs" = "Carbs";
+"macro.fat" = "Fat";
+"macro.proteins" = "Proteins";
+
+/* Napit */
+"btn.take_photo" = "Ota kuva";
+"btn.analyze" = "Analysoi";
+"btn.analyzing" = "Analysoidaan…";
+"btn.pick" = "Valitse";
+
+/* Kopiointi / Sheet */
+"btn.show_reasoning" = "Näytä AI‑päättely";
+"reasoning.title" = "AI‑päättely";
+"reasoning.per100" = "Ravintoarvot 100 g kohti:";
+
+/* A11y */
+"a11y.clear" = "Tyhjennä analyysi";
+"a11y.run_shortcut" = "Suorita Shortcut";
+
+/* Vihje */
+"hint.title" = "Lisävihje (valinnainen)";
+"hint.placeholder" = "esim. “iso lautanen, paljon riisiä, vähän kastiketta”";
+
+/* Asetukset */
+"settings.title" = "Asetukset";
+"settings.general" = "Yleiset";
+"settings.language" = "Kieli";
+"settings.quality" = "Laatu";
+"settings.show_hint" = "Näytä lisävihje‑kenttä";
+
+"settings.shortcuts" = "Pikakomennot";
+"settings.shortcut_enable" = "Näytä Shortcuts‑nappi";
+"settings.shortcut_name_placeholder" = "Shortcutin nimi (tismalleen)";
+
+"settings.howto_header" = "Vinkkejä";
+"settings.howto_photo" = "Hyvä kuva: ota ylhäältä 45–90°, mukaan mittakaava (haarukka/käsi/pakkaus), hyvä valo, vältä tärähdystä. Yksi annos/kuva toimii parhaiten.";
+"settings.hint_help" = "Lisävihje auttaa mallia kontekstissa (esim. annoskoko tai piilokastikkeet).";
+
+/* Shortcut-ilmoitukset */
+"shortcut.title" = "Shortcut";
+"shortcut.missing_name" = "Määritä Shortcutin nimi Asetuksissa ensin.";
+"shortcut.invalid_url" = "Virheellinen Shortcuts‑osoite.";
+"shortcut.failed_open" = "Shortcuts ei avautunut. Varmista, että pikakuvake on olemassa ja nimi täsmää.";
