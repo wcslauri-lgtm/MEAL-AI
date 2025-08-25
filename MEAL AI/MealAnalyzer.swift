@@ -45,7 +45,7 @@ final class MealAnalyzer {
                 userPrompt: userPrompt,
                 imageData: imageData,
                 temperature: 0.0,
-                maxCompletionTokens: 900
+                maxCompletionTokens: 120   // pienempi, koska palautamme vain 3 numeroa
             )
         }
 
@@ -62,18 +62,16 @@ final class MealAnalyzer {
         // 🔹 3.5) peruutus ennen dekoodausta
         try Task.checkCancellation()
 
-        // 4) Yritä ensin koko StageMealResultia
+        // 4) Yritä ensin StageMealResult (analysis.totals-only -rakenne)
         if let decoded: StageMealResult = Self.decodeJSON(from: trimmed) {
             return (decoded, raw)
         }
-        // 4b) Hyväksy myös pelkkä totals-objekti ja kääri se StageMealResultiksi
+        // 4b) Hyväksy pelkkä totals-objekti ja kääri se StageMealResultiksi
         if let t: TotalsOnlyDTO = Self.decodeJSON(from: trimmed) {
             let analysis = MealAnalysis(
-                totals: MealTotals(carbs_g: t.carbs_g, fat_g: t.fat_g, protein_g: t.protein_g),
-                per100g: nil,
-                foods: nil
+                totals: MealTotals(carbs_g: t.carbs_g, protein_g: t.protein_g, fat_g: t.fat_g)
             )
-            let sr = StageMealResult(selvitys: "", reasoning: "", analysis: analysis)
+            let sr = StageMealResult(analysis: analysis)
             return (sr, raw)
         }
 
@@ -93,29 +91,24 @@ final class MealAnalyzer {
         // 5b) TotalsOnlyDTO sanitoinnin jälkeen
         if let t: TotalsOnlyDTO = Self.decodeJSON(from: cleaned) {
             let analysis = MealAnalysis(
-                totals: MealTotals(carbs_g: t.carbs_g, fat_g: t.fat_g, protein_g: t.protein_g),
-                per100g: nil,
-                foods: nil
+                totals: MealTotals(carbs_g: t.carbs_g, protein_g: t.protein_g, fat_g: t.fat_g)
             )
-            let sr = StageMealResult(selvitys: "", reasoning: "", analysis: analysis)
+            let sr = StageMealResult(analysis: analysis)
             return (sr, raw)
         }
 
         // 6) Täsmällisempi virhe: onko JSON syntaktisesti validi vai oikeasti rikki?
         if let dataCheck = cleaned.data(using: .utf8),
            (try? JSONSerialization.jsonObject(with: dataCheck)) != nil {
-            // JSON on syntaktisesti validi → skeema poikkeaa odotetusta
             throw NSError(domain: "MealAnalyzer", code: -12,
                           userInfo: [NSLocalizedDescriptionKey:
                             "JSON ok, mutta skeema poikkeaa odotetusta. Alku: \(trimmed.prefix(200))"])
         } else {
-            // JSON on oikeasti rikki
             throw NSError(domain: "MealAnalyzer", code: -11,
                           userInfo: [NSLocalizedDescriptionKey:
                             "Ei ollut validia JSONia. Vastauksen alku: \(trimmed.prefix(200))"])
         }
     }
-
 
     // MealAnalyzer-luokan sisään
     private func withRetry<T>(maxRetries: Int = 2, baseDelay: Double = 0.4, _ op: @escaping () async throws -> T) async throws -> T {

@@ -2,6 +2,8 @@ import SwiftUI
 import UIKit
 import AVFoundation
 import Foundation
+import Network
+
 
 // MARK: - kuvan koon muutos
 private extension UIImage {
@@ -19,6 +21,25 @@ private extension UIImage {
         }
     }
 }
+
+// MARK: - Monitori
+final class Connectivity: ObservableObject {
+    @Published var isOnline: Bool = true
+    private let monitor = NWPathMonitor()
+    private let queue = DispatchQueue(label: "ConnectivityMonitor")
+
+    init() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            DispatchQueue.main.async {
+                self?.isOnline = (path.status == .satisfied)
+            }
+        }
+        monitor.start(queue: queue)
+    }
+
+    deinit { monitor.cancel() }
+}
+
 
 
 // MARK: - Värit
@@ -121,7 +142,10 @@ struct ContentView: View {
     @State private var userHintText: String = ""
 
     // AI-päättely sheet
-    @State private var showReasoningSheet = false
+#if DEBUG
+@State private var showReasoningSheet = false
+#endif
+
 
     // Shortcut ilmoitus
     @State private var showShortcutAlert = false
@@ -130,6 +154,9 @@ struct ContentView: View {
     // Peruuta/backoff
     @State private var analysisTask: Task<Void, Never>? = nil
     @State private var infoMessage: String?
+    
+    // tilaobjekti
+    @StateObject private var connectivity = Connectivity()
 
     
 
@@ -241,11 +268,14 @@ struct ContentView: View {
                     clearResultsOnly()
                 }
             }
-            // AI-päättely
-            .sheet(isPresented: $showReasoningSheet) {
-                reasoningSheetView()
-                    .presentationDetents([.medium, .large])
-            }
+#if DEBUG
+// AI-päättely (vain DEBUG)
+.sheet(isPresented: $showReasoningSheet) {
+    reasoningSheetView()
+        .presentationDetents([.medium, .large])
+}
+#endif
+
             // Shortcut-kuittaus
             .alert(loc("Shortcut", en: "Shortcut"), isPresented: $showShortcutAlert) {
                 Button("OK", role: .cancel) { }
@@ -467,42 +497,36 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - AI-päättelyn sheet
-
-    @ViewBuilder
-    private func reasoningSheetView() -> some View {
-        NavigationView {
-            ScrollView {
-                Text(rawReasoningText())
-                    .textSelection(.enabled) // kopioitavissa
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .navigationTitle(loc("AI-päättely", en: "AI reasoning"))
-            .navigationBarTitleDisplayMode(.inline)
+#if DEBUG
+// MARK: - AI-päättelyn sheet (vain DEBUG)
+@ViewBuilder
+private func reasoningSheetView() -> some View {
+    NavigationView {
+        ScrollView {
+            Text(rawReasoningText())
+                .textSelection(.enabled)
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .navigationTitle(loc("AI-päättely", en: "AI reasoning"))
+        .navigationBarTitleDisplayMode(.inline)
     }
+}
 
-    private func rawReasoningText() -> String {
-        guard let s = stageResult else { return "" }
-        var parts: [String] = []
+private func rawReasoningText() -> String {
+    guard let s = stageResult else { return "" }
+    let t = s.analysis.totals
+    return """
+    \(loc("Makrot (arvio):", en: "Macros (estimate):"))
+    Carbs: \(formatted(t.carbs_g)) g
+    Fat: \(formatted(t.fat_g)) g
+    Proteins: \(formatted(t.protein_g)) g
+    """
+}
+#endif
 
-        let a = s.selvitys.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !a.isEmpty { parts.append(a) }
 
-        if let per = s.analysis.per100g {
-            let line = "\(loc("Ravintoarvot 100 g kohti", en: "Per 100 g")):\n" +
-            "Carbs: \(formatted(per.carbs_g)) g, " +
-            "Fat: \(formatted(per.fat_g)) g, " +
-            "Proteins: \(formatted(per.protein_g)) g"
-            parts.append(line)
-        }
 
-        let b = s.reasoning.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !b.isEmpty { parts.append(b) }
-
-        return parts.joined(separator: "\n\n")
-    }
 
     /// Palauttaa true, jos virhe on käyttäjän / tehtävän peruutus.
     private func isUserCancellation(_ error: Error) -> Bool {
@@ -520,8 +544,22 @@ struct ContentView: View {
     
     private func analyzeNow() async {
         guard let img = selectedImage else { return }
+        if connectivity.isOnline == false {
+                infoMessage = loc("Ei internet-yhteyttä. Yritä uudelleen, kun yhteys on palautunut.",
+                                  en: "No internet connection. Try again when you’re back online.")
+                errorMessage = nil
+                return
+            }
         let downsized = img.downscaled(maxDimension: 1280)
         guard let data = downsized.jpegData(compressionQuality: 0.8) else { return }
+        if connectivity.isOnline == false {
+            // Neutraali info – ei virhe
+            infoMessage = loc("Ei internet-yhteyttä. Yritä uudelleen, kun yhteys on palautunut.",
+                              en: "No internet connection. Try again when you’re back online.")
+            errorMessage = nil
+            return
+        }
+
 
         // Alustus joka kerta kun analyysi alkaa
         withAnimation { isRunning = true }
