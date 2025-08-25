@@ -36,6 +36,9 @@ final class OpenAIAPI {
         forceJSON: Bool = true
     ) async throws -> String {
 
+        // 1) heti alussa – jos käyttäjä ehti peruuttaa ennen kutsua
+        try Task.checkCancellation()
+
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -47,8 +50,12 @@ final class OpenAIAPI {
         ]
 
         if let imageData = imageData {
+            // 2) juuri ennen raskasta base64:ää
+            try Task.checkCancellation()
+
             let base64 = imageData.base64EncodedString()
-            let textPart: [String: Any] = ["type": "text", "text": userPrompt]
+
+            let textPart: [String: Any]  = ["type": "text", "text": userPrompt]
             let imagePart: [String: Any] = [
                 "type": "image_url",
                 "image_url": ["url": "data:image/jpeg;base64,\(base64)"]
@@ -71,19 +78,25 @@ final class OpenAIAPI {
             "max_completion_tokens": maxCompletionTokens
         ]
 
-        // Pakota JSON-muoto
         if forceJSON {
             body["response_format"] = ["type": "json_object"]
         }
-
-        // Temperature vain 4o‑mini:lle
         if model == .gpt4oMini {
             body["temperature"] = max(0.0, min(1.5, temperature))
         }
 
         req.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
 
+        // 3) juuri ennen verkko-odotusta
+        try Task.checkCancellation()
+
+        // Verkko-operaatio: kun ympäröivä Task peruutetaan,
+        // tämä heittää CancellationErrorin tai URLError.cancelled (-999)
         let (data, resp) = try await session.data(for: req)
+
+        // 4) heti verkon jälkeen, ennen raskaampaa JSON-dekoodausta
+        try Task.checkCancellation()
+
         guard let http = resp as? HTTPURLResponse else {
             throw NSError(domain: "OpenAIAPI", code: -1, userInfo: [NSLocalizedDescriptionKey: "No HTTP response"])
         }
@@ -100,13 +113,11 @@ final class OpenAIAPI {
             throw NSError(domain: "OpenAIAPI", code: -2, userInfo: [NSLocalizedDescriptionKey: "Empty choices.message. Raw: \(raw.prefix(400))"])
         }
 
-        // 1) content as String
         if let text = message["content"] as? String,
            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        // 2) content as [parts]
         if let parts = message["content"] as? [[String: Any]] {
             let collected = parts.compactMap { part -> String? in
                 if let t = part["text"] as? String { return t }
@@ -118,7 +129,6 @@ final class OpenAIAPI {
             }
         }
 
-        // 3) content as {text: ...}
         if let single = message["content"] as? [String: Any] {
             if let t = single["text"] as? String, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return t.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -128,7 +138,6 @@ final class OpenAIAPI {
             }
         }
 
-        // Tyhjä content → nosta virhe raw-debugilla
         let rawStr = String(data: data, encoding: .utf8) ?? ""
         throw NSError(
             domain: "OpenAIAPI",
@@ -136,4 +145,4 @@ final class OpenAIAPI {
             userInfo: [NSLocalizedDescriptionKey: "Empty content in response. Raw: \(rawStr.prefix(800))"]
         )
     }
-}
+    }

@@ -126,6 +126,13 @@ struct ContentView: View {
     // Shortcut ilmoitus
     @State private var showShortcutAlert = false
     @State private var shortcutAlertMessage = ""
+    
+    // Peruuta/backoff
+    @State private var analysisTask: Task<Void, Never>? = nil
+    @State private var infoMessage: String?
+
+    
+
 
     var body: some View {
         NavigationView {
@@ -156,12 +163,20 @@ struct ContentView: View {
                             .transition(.opacity.combined(with: .scale))
                         }
 
-                        // Virhe
+                        // Info (neutraali) – esim. peruutus
+                        if let info = infoMessage, !info.isEmpty {
+                            Text(info)
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal)
+                        }
+
+                        // Virhe (punainen)
                         if let err = errorMessage, !err.isEmpty {
                             Text(err)
                                 .foregroundColor(.red)
                                 .padding(.horizontal)
                         }
+
 
                         // Tuloslaatikko
                         if stageResult != nil {
@@ -386,17 +401,27 @@ struct ContentView: View {
             .buttonStyle(PressableButtonStyle())
             .frame(maxWidth: .infinity)
 
-            // Analysoi
+            // Analysoi (tai Peruuta jos käynnissä)
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                Task { await analyzeNow() }
+
+                if isRunning {
+                    // ✅ Peruuttaa käynnissä olevan analyysin, EI aloita uutta
+                    analysisTask?.cancel()
+                    return
+                }
+
+                // Käynnistä uusi analyysi vain kun ei käynnissä
+                analysisTask = Task { await analyzeNow() }
             } label: {
                 VStack {
-                    Image(systemName: "wand.and.stars")
-                    Text(isRunning ? loc("Analysoidaan…", en: "Analyzing…") : loc("Analysoi", en: "Analyze"))
+                    Image(systemName: isRunning ? "xmark.circle" : "wand.and.stars")
+                    Text(isRunning ? loc("Peruuta", en: "Cancel")
+                                   : loc("Analysoi", en: "Analyze"))
                 }
             }
-            .disabled(isRunning || selectedImage == nil)
+            // ÄLÄ disabloi analyysin aikana, jotta voit peruuttaa
+            .disabled(selectedImage == nil)
             .frame(maxWidth: .infinity)
             .buttonStyle(PressableButtonStyle())
 
@@ -479,25 +504,55 @@ struct ContentView: View {
         return parts.joined(separator: "\n\n")
     }
 
-    // MARK: - Analyze
+    /// Palauttaa true, jos virhe on käyttäjän / tehtävän peruutus.
+    private func isUserCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let urlErr = error as? URLError, urlErr.code == .cancelled { return true } // URLSession -999
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return true } // varmistus
+        if ns.domain == NSCocoaErrorDomain && ns.code == NSUserCancelledError { return true }
+        // Jos ollaan peruutustilassa, varmuuden vuoksi tulkitaan peruutukseksi
+        if Task.isCancelled { return true }
+        return false
+    }
+ // MARK: - Analyze
 
+    
     private func analyzeNow() async {
         guard let img = selectedImage else { return }
         let downsized = img.downscaled(maxDimension: 1280)
         guard let data = downsized.jpegData(compressionQuality: 0.8) else { return }
+
+        // Alustus joka kerta kun analyysi alkaa
         withAnimation { isRunning = true }
         errorMessage = nil
+        infoMessage  = nil
+
+        // Nollaa tila aina lopuksi (onnistui / virhe / peruutus)
+        defer {
+            withAnimation { isRunning = false }
+            analysisTask = nil
+        }
+
         do {
             let (stage, raw) = try await MealAnalyzer.shared.analyzeMeal(imageData: data)
             self.stageResult = stage
             self.rawDebug = raw
             syncUIValuesFromStage()
         } catch {
-            self.errorMessage = "Virhe: \(error.localizedDescription)"
-            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+            if isUserCancellation(error) {
+                // ✅ Peruutus on neutraali ilmoitus, ei virhe
+                self.infoMessage = loc("Peruutettu.", en: "Cancelled.")
+                self.errorMessage = nil
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } else {
+                self.errorMessage = "Virhe: \(error.localizedDescription)"
+                self.infoMessage = nil
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+            }
         }
-        withAnimation { isRunning = false }
     }
+
 
 
     // MARK: - Sync tuloksista UI-arvoihin
@@ -678,6 +733,7 @@ struct ContentView: View {
     private func clearResultsOnly() {
         stageResult = nil
         errorMessage = nil
+        infoMessage = nil
         rawDebug = ""
         carbsVal = nil; fatVal = nil; proteinVal = nil
     }

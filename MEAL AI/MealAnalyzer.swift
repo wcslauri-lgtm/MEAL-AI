@@ -7,12 +7,19 @@ final class MealAnalyzer {
 
     static let shared = MealAnalyzer()
 
-    // Käytetään kevyttä “vision”‑mallia kuvien kanssa; vaihda tarvittaessa.
+    // Käytetään kevyttä “vision”-mallia kuvien kanssa; vaihda tarvittaessa.
     private let model: OpenAIModel = .gpt4oMini
     private let api: OpenAIAPI
+    
+    private struct TotalsOnlyDTO: Codable {
+        let carbs_g: Double
+        let protein_g: Double
+        let fat_g: Double
+    }
+
 
     private init() {
-        // Hyödynnetään samaa API‑avainta kuin muualla projektissa
+        // Hyödynnetään samaa API-avainta kuin muualla projektissa
         self.api = OpenAIAPI(apiKey: OPENAI_API_KEY)
     }
 
@@ -20,60 +27,119 @@ final class MealAnalyzer {
     /// Palauttaa `StageMealResult` + raakavastauksen (debug).
     func analyzeMeal(imageData: Data) async throws -> (StageMealResult, String) {
 
-        // 1) Rakenna viestit – aina sama “High” (stage‑) promptti
-        //    (User‑viesti sisältää vain ohjeen; varsinainen kuva liitetään API‑kutsun imageData‑parametrina)
+        // 🔹 0) peruutus heti alussa
+        try Task.checkCancellation()
+
+        // 1) Promptit
         let systemPrompt = MealPrompts.stageSystem
         let userPrompt   = MealPrompts.stageUser
 
-        // 2) Kutsu OpenAI
-        let raw = try await api.sendChat(
-            model: model,
-            systemPrompt: systemPrompt,
-            userPrompt: userPrompt,
-            imageData: imageData,
-            temperature: 0.0,              // deterministisempi JSON
-            maxCompletionTokens: 900       // riittävä selitykselle + datalle
-        )
+        // 🔹 1.5) peruutus ennen verkkoa
+        try Task.checkCancellation()
 
-        // 3) Tyhjien vastausten tarkistus
-        guard !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw NSError(domain: "MealAnalyzer",
-                          code: -10,
-                          userInfo: [NSLocalizedDescriptionKey:
-                                        "Empty content in response."])
+        // 2) Kutsu OpenAI (verkko-operaatio) — retry/backoff kääreessä
+        let raw = try await withRetry {
+            try await self.api.sendChat(
+                model: self.model,
+                systemPrompt: systemPrompt,
+                userPrompt: userPrompt,
+                imageData: imageData,
+                temperature: 0.0,
+                maxCompletionTokens: 900
+            )
         }
 
-        // 4) JSONiksi -> StageMealResult
-        if let decoded: StageMealResult = Self.decodeJSON(from: raw) {
+        // 🔹 2.5) heti verkon jälkeen
+        try Task.checkCancellation()
+
+        // 3) Trimmaa ja tarkista tyhjä
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw NSError(domain: "MealAnalyzer", code: -10,
+                          userInfo: [NSLocalizedDescriptionKey: "Empty content in response."])
+        }
+
+        // 🔹 3.5) peruutus ennen dekoodausta
+        try Task.checkCancellation()
+
+        // 4) Yritä ensin koko StageMealResultia
+        if let decoded: StageMealResult = Self.decodeJSON(from: trimmed) {
             return (decoded, raw)
         }
+        // 4b) Hyväksy myös pelkkä totals-objekti ja kääri se StageMealResultiksi
+        if let t: TotalsOnlyDTO = Self.decodeJSON(from: trimmed) {
+            let analysis = MealAnalysis(
+                totals: MealTotals(carbs_g: t.carbs_g, fat_g: t.fat_g, protein_g: t.protein_g),
+                per100g: nil,
+                foods: nil
+            )
+            let sr = StageMealResult(selvitys: "", reasoning: "", analysis: analysis)
+            return (sr, raw)
+        }
 
-        // 5) Yritä siivota ja dekoodata uudelleen (poista ```json aidat ym.)
-        let cleaned = Self.sanitizeJSON(raw)
+        // 🔹 4.5) peruutus ennen sanitointia
+        try Task.checkCancellation()
+
+        // 5) Sanitointi (poista ```json -aidat yms.) ja uusi yritys
+        let cleaned = Self.sanitizeJSON(trimmed)
+
+        // 🔹 5.5) peruutus ennen toista dekoodausta
+        try Task.checkCancellation()
+
+        // 5a) StageMealResult sanitoinnin jälkeen
         if let decoded: StageMealResult = Self.decodeJSON(from: cleaned) {
             return (decoded, raw)
         }
+        // 5b) TotalsOnlyDTO sanitoinnin jälkeen
+        if let t: TotalsOnlyDTO = Self.decodeJSON(from: cleaned) {
+            let analysis = MealAnalysis(
+                totals: MealTotals(carbs_g: t.carbs_g, fat_g: t.fat_g, protein_g: t.protein_g),
+                per100g: nil,
+                foods: nil
+            )
+            let sr = StageMealResult(selvitys: "", reasoning: "", analysis: analysis)
+            return (sr, raw)
+        }
 
-        // 6) Epäonnistui
-        throw NSError(domain: "MealAnalyzer",
-                      code: -11,
-                      userInfo: [NSLocalizedDescriptionKey:
-                                    "Ei ollut validia JSONia. Vastauksen alku: \(raw.prefix(200))"])
+        // 6) Täsmällisempi virhe: onko JSON syntaktisesti validi vai oikeasti rikki?
+        if let dataCheck = cleaned.data(using: .utf8),
+           (try? JSONSerialization.jsonObject(with: dataCheck)) != nil {
+            // JSON on syntaktisesti validi → skeema poikkeaa odotetusta
+            throw NSError(domain: "MealAnalyzer", code: -12,
+                          userInfo: [NSLocalizedDescriptionKey:
+                            "JSON ok, mutta skeema poikkeaa odotetusta. Alku: \(trimmed.prefix(200))"])
+        } else {
+            // JSON on oikeasti rikki
+            throw NSError(domain: "MealAnalyzer", code: -11,
+                          userInfo: [NSLocalizedDescriptionKey:
+                            "Ei ollut validia JSONia. Vastauksen alku: \(trimmed.prefix(200))"])
+        }
     }
-}
 
-// MARK: - JSON helpers
 
-extension MealAnalyzer {
-
-    /// Poistaa yleiset “roskat”: ```json ‑aidat, markdownit, johtavat selitteet,
-    /// sekä korjaa yleisimpiä “trailing comma” ‑virheitä.
+    // MealAnalyzer-luokan sisään
+    private func withRetry<T>(maxRetries: Int = 2, baseDelay: Double = 0.4, _ op: @escaping () async throws -> T) async throws -> T {
+        var attempt = 0
+        while true {
+            try Task.checkCancellation()
+            do {
+                return try await op()
+            } catch {
+                attempt += 1
+                if attempt > maxRetries { throw error }
+                let delay = baseDelay * pow(2.0, Double(attempt - 1)) // 0.4s, 0.8s, ...
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+        }
+    }
+// MARK: - JSON helpers (pidetään luokan sisällä -> ei lipsu scope)
+    /// Poistaa yleiset “roskat”: ```json -aidat, markdownit, johtavat selitteet,
+    /// sekä korjaa yleisimpiä “trailing comma” -virheitä.
     static func sanitizeJSON(_ text: String) -> String {
         var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Poista koodiaidat ```json ... ``` tai ``` …
         if t.hasPrefix("```") {
-            // jätä vain aito JSON‑lohko aitojen välistä
             if let r = t.range(of: #"```(?:json)?\s*"#, options: .regularExpression) {
                 t.removeSubrange(r)
             }
@@ -88,13 +154,12 @@ extension MealAnalyzer {
             t.removeSubrange(r)
         }
 
-        // Poista mahdollinen zaczatek/koniec teksti aidan ulkopuolelta
         // Pidä vain ensimmäisestä “{” merkistä viimeiseen “}” merkkiin
         if let first = t.firstIndex(of: "{"), let last = t.lastIndex(of: "}") {
             t = String(t[first...last])
         }
 
-        // Karkea trailing comma ‑ siivous: ", }" -> " }", ", ]" -> " ]"
+        // Karkea trailing comma - siivous: ", }" -> " }", ", ]" -> " ]"
         t = t.replacingOccurrences(of: #",\s*([\}\]])"#,
                                    with: "$1",
                                    options: .regularExpression)
@@ -104,7 +169,6 @@ extension MealAnalyzer {
 
     /// Yrittää dekoodata annettuun tyyppiin.
     static func decodeJSON<T: Decodable>(from text: String) -> T? {
-        // Ensin suoraan
         if let data = text.data(using: .utf8) {
             if let obj = try? JSONDecoder().decode(T.self, from: data) {
                 return obj
