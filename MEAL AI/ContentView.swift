@@ -1,6 +1,25 @@
 import SwiftUI
 import UIKit
 import AVFoundation
+import Foundation
+
+// MARK: - kuvan koon muutos
+private extension UIImage {
+    /// Palauttaa kuvan, jonka suurin sivu on enintään `maxDimension` (säilyttää kuvasuhteen).
+    func downscaled(maxDimension: CGFloat = 1280) -> UIImage {
+        let maxSide = max(size.width, size.height)
+        guard maxSide > maxDimension else { return self }
+        let scale = maxDimension / maxSide
+        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
+        return renderer.image { _ in
+            self.draw(in: CGRect(origin: .zero, size: newSize))
+        }
+    }
+}
+
 
 // MARK: - Värit
 private extension Color {
@@ -101,7 +120,7 @@ struct ContentView: View {
     // Lisävihje (UI)
     @State private var userHintText: String = ""
 
-    // AI‑päättely sheet
+    // AI-päättely sheet
     @State private var showReasoningSheet = false
 
     // Shortcut ilmoitus
@@ -177,6 +196,7 @@ struct ContentView: View {
                     if shortcutEnabled {
                         Button {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            // ✅ käyttää nyt no-arg wrapperia
                             runShortcutWithOptionalJSON()
                         } label: {
                             Image(systemName: "bolt.fill")
@@ -206,7 +226,7 @@ struct ContentView: View {
                     clearResultsOnly()
                 }
             }
-            // AI‑päättely
+            // AI-päättely
             .sheet(isPresented: $showReasoningSheet) {
                 reasoningSheetView()
                     .presentationDetents([.medium, .large])
@@ -422,7 +442,7 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - AI‑päättelyn sheet
+    // MARK: - AI-päättelyn sheet
 
     @ViewBuilder
     private func reasoningSheetView() -> some View {
@@ -433,7 +453,7 @@ struct ContentView: View {
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .navigationTitle(loc("AI‑päättely", en: "AI reasoning"))
+            .navigationTitle(loc("AI-päättely", en: "AI reasoning"))
             .navigationBarTitleDisplayMode(.inline)
         }
     }
@@ -462,11 +482,11 @@ struct ContentView: View {
     // MARK: - Analyze
 
     private func analyzeNow() async {
-        guard let img = selectedImage,
-              let data = img.jpegData(compressionQuality: 0.85) else { return }
+        guard let img = selectedImage else { return }
+        let downsized = img.downscaled(maxDimension: 1280)
+        guard let data = downsized.jpegData(compressionQuality: 0.8) else { return }
         withAnimation { isRunning = true }
         errorMessage = nil
-
         do {
             let (stage, raw) = try await MealAnalyzer.shared.analyzeMeal(imageData: data)
             self.stageResult = stage
@@ -478,6 +498,7 @@ struct ContentView: View {
         }
         withAnimation { isRunning = false }
     }
+
 
     // MARK: - Sync tuloksista UI-arvoihin
 
@@ -541,69 +562,112 @@ struct ContentView: View {
         return (c, f, p)
     }
 
-    /// Ajaa Shortcuttia. Jos asetuksissa on päällä “Lähetä makrot JSON‑inputtina”, liitetään input mukaan.
-    /// Käyttää x-callback-urlia nopeaan paluuseen: mealai://done
-    private func runShortcutWithOptionalJSON() {
+
+    // MARK: - Shortcuts: compact JSON rakentaja
+    /// Palauttaa Shortcutille lähetettävän JSONin muodossa:
+    /// {"carbs": 45, "protein": 20, "fat": 15}
+    private func buildCompactShortcutJSON() -> String? {
+        guard let ints = currentMacroInts() else { return nil }
+
+        // Vain vaaditut kentät, ilman "_g" -päätteitä tai ylimääräisiä meta-arvoja
+        let payload: [String: Int] = [
+            "carbs":   ints.carbs,
+            "protein": ints.protein,
+            "fat":     ints.fat
+        ]
+
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+
+    // MARK: - Shortcuts: no-arg wrapper, käyttää compact JSONia
+
+    func runShortcutWithOptionalJSON() {
         let name = shortcutName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else {
+
+        var jsonString: String? = nil
+        if shortcutSendJSON {
+            jsonString = buildCompactShortcutJSON()
+            if jsonString == nil {
+                shortcutAlertMessage = loc("Ei lähetettäviä arvoja. Tee analyysi ensin tai säädä arvoja.", en: "No values to send. Run an analysis first or adjust values.")
+                showShortcutAlert = true
+                return
+            }
+        }
+
+        runShortcutWithOptionalJSON(shortcutName: name, json: jsonString)
+    }
+
+
+    // Avaa iOS Shortcuts -appiin valitun Shortcutin ja välittää JSONin turvallisesti
+    func runShortcutWithOptionalJSON(shortcutName: String, json: String?) {
+        let trimmed = shortcutName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
             shortcutAlertMessage = loc("Määritä Shortcuttin nimi asetuksissa.", en: "Define the Shortcut name in Settings.")
             showShortcutAlert = true
             return
         }
 
-        // JSON-input (valinnainen)
-        var json: String? = nil
-        if shortcutSendJSON, let m = currentMacroInts() {
-            let dict: [String: Any] = ["carbs": m.carbs, "fat": m.fat, "protein": m.protein]
-            if let data = try? JSONSerialization.data(withJSONObject: dict, options: []),
-               let s = String(data: data, encoding: .utf8) {
-                json = s
-            }
+        // Rakennetaan shortcuts://x-callback-url/run-shortcut?...
+        var comps = URLComponents()
+        comps.scheme = "shortcuts"
+        comps.host   = "x-callback-url"
+        comps.path   = "/run-shortcut"
+
+        var items: [URLQueryItem] = [
+            URLQueryItem(name: "name",      value: trimmed),
+            URLQueryItem(name: "x-success", value: "mealai://done"),
+            URLQueryItem(name: "x-error",   value: "mealai://error"),
+            URLQueryItem(name: "x-cancel",  value: "mealai://cancel"),
+        ]
+
+        // Välitä analyysin JSON Shortcutsille "input"-kentässä vain jos sitä löytyy
+        if let j = json, !j.isEmpty {
+            items.append(URLQueryItem(name: "input", value: j))
         }
+        comps.queryItems = items
 
-        // Percent-encoding
-        let encName = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
-        let encInput = (json ?? "").addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-
-        // x-callback (HUOM! mealai:// pitää olla määritelty Info.plistissä URL Scheme -kohtaan)
-        let xSuccess = "mealai://done".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let xError   = "mealai://error".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let xCancel  = "mealai://cancel".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-
-        // RAKENNA URL (x-callback-url endpoint)
-        var urlStr = "shortcuts://x-callback-url/run-shortcut?name=\(encName)&x-success=\(xSuccess)&x-error=\(xError)&x-cancel=\(xCancel)"
-        if !encInput.isEmpty {
-            urlStr += "&input=\(encInput)"
-        }
-
-        guard let url = URL(string: urlStr) else {
-            shortcutAlertMessage = loc("Virheellinen Shortcuts‑URL.", en: "Invalid Shortcuts URL.")
+        guard let url = comps.url else {
+            shortcutAlertMessage = loc("Virheellinen Shortcuts-URL.", en: "Invalid Shortcuts URL.")
             showShortcutAlert = true
             return
         }
 
         UIApplication.shared.open(url) { ok in
             if !ok {
-                shortcutAlertMessage = loc("Shortcuts ei avautunut. Varmista, että pikakuvake on olemassa ja nimi täsmää.",
-                                           en: "Shortcuts did not open. Make sure the shortcut exists and the name matches.")
+                shortcutAlertMessage = loc("Shortcutsin avaaminen epäonnistui.", en: "Failed to open Shortcuts.")
                 showShortcutAlert = true
-            } else {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
         }
     }
 
     // ✅ Shortcuts x-callback tulkinta — sijoitettu ContentView’n SISÄLLE
     private func handleCallbackURL(_ url: URL) {
+        guard url.scheme == "mealai" else { return }
+        let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
+
         switch url.host {
         case "done":
             shortcutAlertMessage = loc("Pikakuvake suoritettu ✅", en: "Shortcut finished ✅")
             showShortcutAlert = true
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
         case "error":
-            shortcutAlertMessage = loc("Pikakuvake epäonnistui ❌", en: "Shortcut failed ❌")
+            // yritetään poimia selitysteksti (esim. ?error=Something)
+            let reason = comps?.queryItems?.first(where: { $0.name == "error" || $0.name == "message" })?.value
+            shortcutAlertMessage = reason ?? loc("Pikakuvake epäonnistui ❌", en: "Shortcut failed ❌")
             showShortcutAlert = true
+
         case "cancel":
+            // Ei näytetä alertia peruutuksesta, mutta voit halutessa näyttää:
+            // shortcutAlertMessage = loc("Peruit Shortcutsin.", en: "Shortcut was cancelled.")
+            // showShortcutAlert = true
             break
+
         default:
             break
         }

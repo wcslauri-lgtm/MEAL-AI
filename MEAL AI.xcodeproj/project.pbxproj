@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		F19611D42E5CAC340018424F /* Debug.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = F19611D32E5CAC340018424F /* Debug.xcconfig */; };
+		F19611D62E5CAC5B0018424F /* Release.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = F19611D52E5CAC5B0018424F /* Release.xcconfig */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		F196103C2E4CD16A0018424F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +32,8 @@
 		F196102E2E4CD1680018424F /* MEAL AI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "MEAL AI.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F196103B2E4CD16A0018424F /* MEAL AITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "MEAL AITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F19610452E4CD16A0018424F /* MEAL AIUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "MEAL AIUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F19611D32E5CAC340018424F /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		F19611D52E5CAC5B0018424F /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -79,6 +86,8 @@
 				F196103E2E4CD16A0018424F /* MEAL AITests */,
 				F19610482E4CD16A0018424F /* MEAL AIUITests */,
 				F196102F2E4CD1680018424F /* Products */,
+				F19611D32E5CAC340018424F /* Debug.xcconfig */,
+				F19611D52E5CAC5B0018424F /* Release.xcconfig */,
 			);
 			sourceTree = "<group>";
 		};
@@ -214,6 +223,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F19611D62E5CAC5B0018424F /* Release.xcconfig in Resources */,
+				F19611D42E5CAC340018424F /* Debug.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -273,6 +284,7 @@
 /* Begin XCBuildConfiguration section */
 		F196104D2E4CD16A0018424F /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = F19611D32E5CAC340018424F /* Debug.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -338,6 +350,7 @@
 		};
 		F196104E2E4CD16A0018424F /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = F19611D52E5CAC5B0018424F /* Release.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;

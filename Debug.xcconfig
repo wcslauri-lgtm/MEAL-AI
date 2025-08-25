@@ -1,3 +1,2 @@
+// Debug.xcconfig
 OPENAI_API_KEY = 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
-OPENAI_ORG_ID =
-OPENAI_MODEL  = gpt-4o-mini
