@@ -134,11 +134,14 @@ final class MealAnalyzer {
             } catch {
                 attempt += 1
                 if attempt > maxRetries { throw error }
-                let delay = baseDelay * pow(2.0, Double(attempt - 1)) // 0.4s, 0.8s, ...
-                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                // eksponentiaalinen viive + pieni satunnainen jitter (0…0.25 s)
+                let base = baseDelay * pow(2.0, Double(attempt - 1)) // 0.4s, 0.8s, ...
+                let jitter = Double.random(in: 0...0.25)
+                try? await Task.sleep(nanoseconds: UInt64((base + jitter) * 1_000_000_000))
             }
         }
     }
+
 
     // MARK: - JSON helpers
     /// Poistaa yleiset “roskat”: ```json-aidat, markdown-prefiksit, trailing comma -tapaukset.

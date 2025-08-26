@@ -4,8 +4,8 @@ struct SettingsView: View {
     // Kieli
     @AppStorage("appLanguage") private var appLanguage: String = "FI" // "FI" | "EN"
 
-    // Laatutaso analyysille
-    @AppStorage("qualityMode") private var qualityMode: String = "standard" // "standard" | "high" | "premium"
+    // Pienempi datankulutus
+    @AppStorage("preferSmallerOnCellular") private var preferSmallerOnCellular = false
 
     // UI
     @AppStorage("showHintField") private var showHintField: Bool = true
@@ -26,7 +26,15 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
             }
-
+            
+            // MARK: - Käyttöliittymä
+            Section(header: Text("Verkko")) {
+                Toggle(isOn: $preferSmallerOnCellular) {
+                    Text("Pienempi kuva mobiiliverkossa")
+                }
+                .help("Suomessa mobiili on usein kiinteähintainen; ulkomailla/prepaidilla säästää dataa.")
+            }
+            
             // MARK: - Käyttöliittymä
             Section(header: Text(loc("Käyttöliittymä", en: "Interface"))) {
                 Toggle(loc("Näytä lisävihje-kenttä", en: "Show optional hint field"), isOn: $showHintField)

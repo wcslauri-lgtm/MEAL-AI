@@ -24,17 +24,24 @@ private extension UIImage {
 // MARK: - Yhteysvahti (offline-ilmoitusta varten)
 final class Connectivity: ObservableObject {
     @Published var isOnline: Bool = true
+    @Published var isCellular: Bool = false
+
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "ConnectivityMonitor")
 
     init() {
         monitor.pathUpdateHandler = { [weak self] path in
-            DispatchQueue.main.async { self?.isOnline = (path.status == .satisfied) }
+            DispatchQueue.main.async {
+                self?.isOnline = (path.status == .satisfied)
+                self?.isCellular = path.isExpensive // = todennäköisesti mobiiliverkko
+            }
         }
         monitor.start(queue: queue)
     }
+
     deinit { monitor.cancel() }
 }
+
 
 // MARK: - Värit
 private extension Color {
@@ -110,6 +117,8 @@ struct ContentView: View {
     @AppStorage("shortcutEnabled") private var shortcutEnabled = true
     @AppStorage("shortcutName") private var shortcutName = ""
     @AppStorage("shortcutSendJSON") private var shortcutSendJSON = true
+    @AppStorage("preferSmallerOnCellular") private var preferSmallerOnCellular = false
+
 
     // Kuva & picker
     @State private var selectedImage: UIImage?
@@ -520,9 +529,19 @@ struct ContentView: View {
             return
         }
 
-        let downsized = img.downscaled(maxDimension: 1280)
-        guard let data = downsized.jpegData(compressionQuality: 0.8) else { return }
+        // Valitse max-dimensio mobiiliverkon ja asetuksen perusteella
+        let maxDim: CGFloat = (connectivity.isCellular && preferSmallerOnCellular) ? 1024 : 1280
 
+        // Valmistele data taustalla
+        let data: Data
+        do {
+            data = try await makeJPEGDataAsync(from: img, maxDimension: maxDim, quality: 0.8)
+        } catch {
+            errorMessage = "Virhe: \(error.localizedDescription)"
+            return
+        }
+
+        // --- täällä jatkuu nykyinen analysointipolku (isRunning, defer, try/await jne.) ---
         withAnimation { isRunning = true }
         errorMessage = nil
         infoMessage  = nil
@@ -533,7 +552,8 @@ struct ContentView: View {
         }
 
         do {
-            let (stage, raw) = try await MealAnalyzer.shared.analyzeMeal(imageData: data)
+            // KOHTA 4: pehmää aikakatkaisua hyödyntävä kutsu:
+            let (stage, raw) = try await analyzeWithTimeout(data, timeout: 25)
             self.stageResult = stage
             self.rawDebug = raw
             syncUIValuesFromStage()
@@ -549,6 +569,28 @@ struct ContentView: View {
             }
         }
     }
+
+    /// Kilpa-ajaa analyysin ja pehmeän aikakatkaisun (esim. 25 s).
+    private func analyzeWithTimeout(_ data: Data, timeout: TimeInterval = 25) async throws -> (StageMealResult, String) {
+        try await withThrowingTaskGroup(of: (StageMealResult, String).self) { group in
+            group.addTask {
+                try await MealAnalyzer.shared.analyzeMeal(imageData: data)
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                throw URLError(.timedOut)
+            }
+            do {
+                let result = try await group.next()!
+                group.cancelAll()
+                return result
+            } catch {
+                group.cancelAll()
+                throw error
+            }
+        }
+    }
+
 
     // MARK: - Sync tuloksista UI-arvoihin
     private func syncUIValuesFromStage() {
@@ -707,6 +749,17 @@ struct ContentView: View {
         }
     }
 
+    /// Käsittelee kuvan taustalla ja palauttaa JPEG-datan.
+    /// Käyttää autoreleasepoolia muistipiikkien pienentämiseksi.
+    private func makeJPEGDataAsync(from image: UIImage, maxDimension: CGFloat, quality: CGFloat = 0.8) async throws -> Data {
+        try await Task.detached(priority: .userInitiated) {
+            let downsized = image.downscaled(maxDimension: maxDimension)
+            return try autoreleasepool {
+                if let d = downsized.jpegData(compressionQuality: quality) { return d }
+                throw NSError(domain: "ContentView", code: -20, userInfo: [NSLocalizedDescriptionKey: "JPEG encoding failed"])
+            }
+        }.value
+    }
     // MARK: - Clear
     private func clearResultsOnly() {
         stageResult = nil
