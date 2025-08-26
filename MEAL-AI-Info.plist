@@ -17,5 +17,9 @@
 	</array>
 	<key>OPENAI_API_KEY</key>
 	<string>$(OPENAI_API_KEY)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Käytämme kameraa aterian kuvaamiseen.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Käytämme kuvakirjastoa valitaksesi kuvan analyysiä varten.</string>
 </dict>
 </plist>

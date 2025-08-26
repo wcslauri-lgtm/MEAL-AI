@@ -4,7 +4,6 @@ import AVFoundation
 import Foundation
 import Network
 
-
 // MARK: - kuvan koon muutos
 private extension UIImage {
     /// Palauttaa kuvan, jonka suurin sivu on enintään `maxDimension` (säilyttää kuvasuhteen).
@@ -22,7 +21,7 @@ private extension UIImage {
     }
 }
 
-// MARK: - Monitori
+// MARK: - Yhteysvahti (offline-ilmoitusta varten)
 final class Connectivity: ObservableObject {
     @Published var isOnline: Bool = true
     private let monitor = NWPathMonitor()
@@ -30,17 +29,12 @@ final class Connectivity: ObservableObject {
 
     init() {
         monitor.pathUpdateHandler = { [weak self] path in
-            DispatchQueue.main.async {
-                self?.isOnline = (path.status == .satisfied)
-            }
+            DispatchQueue.main.async { self?.isOnline = (path.status == .satisfied) }
         }
         monitor.start(queue: queue)
     }
-
     deinit { monitor.cancel() }
 }
-
-
 
 // MARK: - Värit
 private extension Color {
@@ -48,7 +42,7 @@ private extension Color {
     static let appPlusGreen = Color(red: 106/255, green: 168/255, blue: 79/255)     // #6aa84f
 }
 
-// MARK: - Pressable Button Style (skaala-animaatio)
+// MARK: - Pressable Button Style
 struct PressableButtonStyle: ButtonStyle {
     var scale: CGFloat = 0.96
     func makeBody(configuration: Configuration) -> some View {
@@ -58,9 +52,7 @@ struct PressableButtonStyle: ButtonStyle {
     }
 }
 
-// MARK: - Pitkä painallus + auto-repeat -nappi
-/// - Tap: suorittaa onTap (±1)
-/// - Long press: juoksee onRepeat (±5) ~interval välein, kunnes vapautetaan
+// MARK: - Auto-repeat -nappi
 struct AutoRepeatCircleButton: View {
     let title: String
     let bgColor: Color
@@ -69,9 +61,8 @@ struct AutoRepeatCircleButton: View {
     let onRepeat: () -> Void
 
     @State private var timer: Timer?
-    // Muokattavat aikamääreet:
-    private let interval: TimeInterval = 0.35       // toistoväli long pressissä
-    private let longPressThreshold: TimeInterval = 0.7 // kuinka pitkään ennen kuin alkaa juosta
+    private let interval: TimeInterval = 0.35
+    private let longPressThreshold: TimeInterval = 0.7
 
     var body: some View {
         Text(title)
@@ -128,12 +119,13 @@ struct ContentView: View {
     // Prosessin tila
     @State private var isRunning = false
     @State private var errorMessage: String?
+    @State private var infoMessage: String?
 
     // Tulokset — StageMealResult
     @State private var stageResult: StageMealResult?
     @State private var rawDebug: String = ""
 
-    // UI-säädettävät arvot (±1 / ±5 long press)
+    // UI-säädettävät arvot
     @State private var carbsVal: Double?
     @State private var fatVal: Double?
     @State private var proteinVal: Double?
@@ -141,44 +133,37 @@ struct ContentView: View {
     // Lisävihje (UI)
     @State private var userHintText: String = ""
 
-    // AI-päättely sheet
-#if DEBUG
-@State private var showReasoningSheet = false
-#endif
+    // AI-päättely (vain DEBUG)
+    #if DEBUG
+    @State private var showReasoningSheet = false
+    #endif
 
-
-    // Shortcut ilmoitus
+    // Shortcut alert
     @State private var showShortcutAlert = false
     @State private var shortcutAlertMessage = ""
-    
-    // Peruuta/backoff
+
+    // Peruuta
     @State private var analysisTask: Task<Void, Never>? = nil
-    @State private var infoMessage: String?
-    
-    // tilaobjekti
+
+    // Offline
     @StateObject private var connectivity = Connectivity()
-
-    
-
 
     var body: some View {
         NavigationView {
             VStack(spacing: 12) {
                 ScrollView {
                     VStack(spacing: 16) {
-                        // Kuva
                         imagePreview
 
-                        // Lisävihje-kenttä
                         if showHintField {
-                            TextField(loc("Lisävihje (valinnainen)",
-                                          en: "Optional hint (e.g., weights, sauces)"),
-                                      text: $userHintText)
-                                .textFieldStyle(.roundedBorder)
-                                .padding(.horizontal)
+                            TextField(
+                                loc("Lisävihje (valinnainen)", en: "Optional hint (e.g., weights, sauces)"),
+                                text: $userHintText
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .padding(.horizontal)
                         }
 
-                        // Tilaviesti
                         if isRunning {
                             VStack(spacing: 8) {
                                 ProgressView()
@@ -190,22 +175,18 @@ struct ContentView: View {
                             .transition(.opacity.combined(with: .scale))
                         }
 
-                        // Info (neutraali) – esim. peruutus
                         if let info = infoMessage, !info.isEmpty {
                             Text(info)
                                 .foregroundColor(.secondary)
                                 .padding(.horizontal)
                         }
 
-                        // Virhe (punainen)
                         if let err = errorMessage, !err.isEmpty {
                             Text(err)
                                 .foregroundColor(.red)
                                 .padding(.horizontal)
                         }
 
-
-                        // Tuloslaatikko
                         if stageResult != nil {
                             resultsBox
                                 .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -214,13 +195,11 @@ struct ContentView: View {
                     .padding(.vertical, 8)
                 }
 
-                // Alapalkki
                 bottomBar
             }
             .navigationBarTitleDisplayMode(.inline)
-            .navigationTitle("") // ei vie tilaa yläreunassa
+            .navigationTitle("")
             .toolbar {
-                // Vasen: roskakori
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -233,12 +212,10 @@ struct ContentView: View {
                     .buttonStyle(PressableButtonStyle())
                 }
 
-                // Oikea: Shortcut (jos käytössä) + asetukset
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     if shortcutEnabled {
                         Button {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            // ✅ käyttää nyt no-arg wrapperia
                             runShortcutWithOptionalJSON()
                         } label: {
                             Image(systemName: "bolt.fill")
@@ -255,7 +232,6 @@ struct ContentView: View {
                     .buttonStyle(PressableButtonStyle())
                 }
             }
-            // Kamera ja kirjasto
             .fullScreenCover(isPresented: $showCamera) {
                 ImagePicker(sourceType: .camera) { image in
                     selectedImage = image
@@ -268,21 +244,17 @@ struct ContentView: View {
                     clearResultsOnly()
                 }
             }
-#if DEBUG
-// AI-päättely (vain DEBUG)
-.sheet(isPresented: $showReasoningSheet) {
-    reasoningSheetView()
-        .presentationDetents([.medium, .large])
-}
-#endif
-
-            // Shortcut-kuittaus
+            #if DEBUG
+            .sheet(isPresented: $showReasoningSheet) {
+                reasoningSheetView()
+                    .presentationDetents([.medium, .large])
+            }
+            #endif
             .alert(loc("Shortcut", en: "Shortcut"), isPresented: $showShortcutAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(shortcutAlertMessage)
             }
-            // ✅ Shortcuts x-callback palaa tähän
             .onOpenURL { url in
                 handleCallbackURL(url)
             }
@@ -290,7 +262,6 @@ struct ContentView: View {
     }
 
     // MARK: - Kuvaesikatselu
-
     private var imagePreview: some View {
         Group {
             if let img = selectedImage {
@@ -320,14 +291,14 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Tuloslaatikko
-
+    // MARK: - Tuloslaatikko (sis. “Palauta AI-arvot”)
     private var resultsBox: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(loc("Analyysin tulos", en: "Analysis Result"))
+            // Otsikko: AI:n nimi jos on, muuten fallback
+            Text(mealTitle())
                 .font(.headline)
 
-            // Arvorivit: “- XX g +” (värit + long press auto-repeat)
+            // Arvorivit: “- XX g +”
             VStack(spacing: 10) {
                 adjustableRow(title: "Carbs", value: Binding(
                     get: { carbsVal ?? currentCarbsDefault() },
@@ -343,33 +314,47 @@ struct ContentView: View {
                 ))
             }
 
-            // Kopiointinapit arvojen alla (kolmijakona)
+            // Kopiointinapit
             HStack(spacing: 10) {
                 copyButton(label: "Carbs", value: carbsVal ?? currentCarbsDefault())
                 copyButton(label: "Fat", value: fatVal ?? currentFatDefault())
                 copyButton(label: "Proteins", value: proteinVal ?? currentProteinDefault())
             }
 
+            // Palauta AI-arvot
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    syncUIValuesFromStage()
+                }
+            } label: {
+                Text(loc("Palauta AI-arvot", en: "Reset to AI values"))
+                    .font(.footnote.weight(.semibold))
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(Color(.tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(PressableButtonStyle())
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal)
-        // iOS 17+: kahden parametrin onChange
         .onChange(of: stageResult?.analysis.totals.carbs_g) { _, _ in
             syncUIValuesIfNeeded()
         }
     }
 
-    // Yksi rivi: − [XX g] +
+
+    // MARK: - Arvorivi
     private func adjustableRow(title: String, value: Binding<Double>) -> some View {
         HStack(spacing: 12) {
             Text(title)
                 .font(.title3.weight(.semibold))
                 .frame(width: 95, alignment: .leading)
 
-            // Miinus: tap = −1, long = toistona −5
             AutoRepeatCircleButton(
                 title: "−",
                 bgColor: .appMinusRed,
@@ -382,7 +367,6 @@ struct ContentView: View {
                 .font(.title3.monospacedDigit())
                 .frame(minWidth: 80, alignment: .center)
 
-            // Plus: tap = +1, long = toistona +5
             AutoRepeatCircleButton(
                 title: "+",
                 bgColor: .appPlusGreen,
@@ -396,8 +380,7 @@ struct ContentView: View {
         .padding(.vertical, 4)
     }
 
-    // MARK: - Kopiointinapit
-
+    // MARK: - Kopio
     private func copyButton(label: String, value: Double) -> some View {
         Button {
             UIPasteboard.general.string = numberForCopy(value)
@@ -414,11 +397,9 @@ struct ContentView: View {
         .buttonStyle(PressableButtonStyle())
     }
 
-    // MARK: - Bottom bar
-
+    // MARK: - Alapalkki
     private var bottomBar: some View {
         HStack(spacing: 12) {
-            // Ota kuva
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 openCamera()
@@ -431,17 +412,13 @@ struct ContentView: View {
             .buttonStyle(PressableButtonStyle())
             .frame(maxWidth: .infinity)
 
-            // Analysoi (tai Peruuta jos käynnissä)
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
                 if isRunning {
-                    // ✅ Peruuttaa käynnissä olevan analyysin, EI aloita uutta
-                    analysisTask?.cancel()
+                    analysisTask?.cancel() // Peruuta käynnissä oleva analyysi
                     return
                 }
-
-                // Käynnistä uusi analyysi vain kun ei käynnissä
                 analysisTask = Task { await analyzeNow() }
             } label: {
                 VStack {
@@ -450,12 +427,10 @@ struct ContentView: View {
                                    : loc("Analysoi", en: "Analyze"))
                 }
             }
-            // ÄLÄ disabloi analyysin aikana, jotta voit peruuttaa
             .disabled(selectedImage == nil)
             .frame(maxWidth: .infinity)
             .buttonStyle(PressableButtonStyle())
 
-            // Valitse kirjastosta
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 showLibrary = true
@@ -474,10 +449,8 @@ struct ContentView: View {
     }
 
     // MARK: - Kamera
-
     private func openCamera() {
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
-            // Ei kameraa -> avaa kirjasto
             showLibrary = true
             return
         }
@@ -492,81 +465,68 @@ struct ContentView: View {
                 }
             }
         default:
-            // Kielletty -> avaa kirjasto tai näytä alert
             self.showLibrary = true
         }
     }
 
-#if DEBUG
-// MARK: - AI-päättelyn sheet (vain DEBUG)
-@ViewBuilder
-private func reasoningSheetView() -> some View {
-    NavigationView {
-        ScrollView {
-            Text(rawReasoningText())
-                .textSelection(.enabled)
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
+    #if DEBUG
+    // MARK: - AI-päättely (vain DEBUG)
+    @ViewBuilder
+    private func reasoningSheetView() -> some View {
+        NavigationView {
+            ScrollView {
+                Text(rawReasoningText())
+                    .textSelection(.enabled)
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .navigationTitle(loc("AI-päättely", en: "AI reasoning"))
+            .navigationBarTitleDisplayMode(.inline)
         }
-        .navigationTitle(loc("AI-päättely", en: "AI reasoning"))
-        .navigationBarTitleDisplayMode(.inline)
     }
-}
 
-private func rawReasoningText() -> String {
-    guard let s = stageResult else { return "" }
-    let t = s.analysis.totals
-    return """
-    \(loc("Makrot (arvio):", en: "Macros (estimate):"))
-    Carbs: \(formatted(t.carbs_g)) g
-    Fat: \(formatted(t.fat_g)) g
-    Proteins: \(formatted(t.protein_g)) g
-    """
-}
-#endif
+    private func rawReasoningText() -> String {
+        guard let s = stageResult else { return "" }
+        let t = s.analysis.totals
+        return """
+        \(loc("Makrot (arvio):", en: "Macros (estimate):"))
+        Carbs: \(formatted(t.carbs_g)) g
+        Fat: \(formatted(t.fat_g)) g
+        Proteins: \(formatted(t.protein_g)) g
+        """
+    }
+    #endif
 
-
-
-
-    /// Palauttaa true, jos virhe on käyttäjän / tehtävän peruutus.
+    /// Peruutuksen tunnistus
     private func isUserCancellation(_ error: Error) -> Bool {
         if error is CancellationError { return true }
-        if let urlErr = error as? URLError, urlErr.code == .cancelled { return true } // URLSession -999
+        if let urlErr = error as? URLError, urlErr.code == .cancelled { return true }
         let ns = error as NSError
-        if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return true } // varmistus
+        if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return true }
         if ns.domain == NSCocoaErrorDomain && ns.code == NSUserCancelledError { return true }
-        // Jos ollaan peruutustilassa, varmuuden vuoksi tulkitaan peruutukseksi
         if Task.isCancelled { return true }
         return false
     }
- // MARK: - Analyze
 
-    
+    // MARK: - Analyze
     private func analyzeNow() async {
         guard let img = selectedImage else { return }
+
+        // Offline-check
         if connectivity.isOnline == false {
-                infoMessage = loc("Ei internet-yhteyttä. Yritä uudelleen, kun yhteys on palautunut.",
-                                  en: "No internet connection. Try again when you’re back online.")
-                errorMessage = nil
-                return
-            }
-        let downsized = img.downscaled(maxDimension: 1280)
-        guard let data = downsized.jpegData(compressionQuality: 0.8) else { return }
-        if connectivity.isOnline == false {
-            // Neutraali info – ei virhe
             infoMessage = loc("Ei internet-yhteyttä. Yritä uudelleen, kun yhteys on palautunut.",
                               en: "No internet connection. Try again when you’re back online.")
             errorMessage = nil
             return
         }
 
+        let downsized = img.downscaled(maxDimension: 1280)
+        guard let data = downsized.jpegData(compressionQuality: 0.8) else { return }
 
-        // Alustus joka kerta kun analyysi alkaa
         withAnimation { isRunning = true }
         errorMessage = nil
         infoMessage  = nil
 
-        // Nollaa tila aina lopuksi (onnistui / virhe / peruutus)
         defer {
             withAnimation { isRunning = false }
             analysisTask = nil
@@ -579,7 +539,6 @@ private func rawReasoningText() -> String {
             syncUIValuesFromStage()
         } catch {
             if isUserCancellation(error) {
-                // ✅ Peruutus on neutraali ilmoitus, ei virhe
                 self.infoMessage = loc("Peruutettu.", en: "Cancelled.")
                 self.errorMessage = nil
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -591,10 +550,7 @@ private func rawReasoningText() -> String {
         }
     }
 
-
-
     // MARK: - Sync tuloksista UI-arvoihin
-
     private func syncUIValuesFromStage() {
         guard let s = stageResult else {
             carbsVal = nil; fatVal = nil; proteinVal = nil
@@ -611,15 +567,13 @@ private func rawReasoningText() -> String {
         }
     }
 
-    // MARK: - Helpers (formatointi, kopiointi, oletukset, lokalisointi)
-
+    // MARK: - Helpers
     private func formatted(_ v: Double) -> String {
         let v1 = (v * 10).rounded() / 10
         if v1.rounded() == v1 { return String(Int(v1)) }
         return String(format: "%.1f", v1)
     }
 
-    /// Kopioidaan vain numero, pilkkudesimaalilla (X,X) jos desimaaleja
     private func numberForCopy(_ v: Double) -> String {
         let v1 = (v * 10).rounded() / 10
         if v1.rounded() == v1 {
@@ -640,13 +594,11 @@ private func rawReasoningText() -> String {
         stageResult?.analysis.totals.protein_g ?? 0
     }
 
-    // Yksinkertainen lokalisointiapu
     private func loc(_ fi: String, en: String? = nil) -> String {
         if appLanguage == "FI" { return fi }
         return en ?? fi
     }
 
-    /// Palauttaa nykyiset (mahd. käyttäjän säätämät) arvot tai mallin oletukset.
     private func currentMacroInts() -> (carbs: Int, fat: Int, protein: Int)? {
         let c = Int((carbsVal ?? stageResult?.analysis.totals.carbs_g ?? 0).rounded())
         let f = Int((fatVal ?? stageResult?.analysis.totals.fat_g ?? 0).rounded())
@@ -654,30 +606,29 @@ private func rawReasoningText() -> String {
         if c == 0, f == 0, p == 0 { return nil }
         return (c, f, p)
     }
+    // Otsikko tuloslaatikkoon: AI:n antama nimi jos on, muuten fallback-teksti.
+    private func mealTitle() -> String {
+        let name = stageResult?.mealName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if name.isEmpty {
+            return loc("Analyysin tulos", en: "Analysis Result")
+        }
+        return String(name.prefix(60))
+    }
 
-
-    // MARK: - Shortcuts: compact JSON rakentaja
-    /// Palauttaa Shortcutille lähetettävän JSONin muodossa:
-    /// {"carbs": 45, "protein": 20, "fat": 15}
+    // MARK: - Shortcuts (compact JSON)
     private func buildCompactShortcutJSON() -> String? {
         guard let ints = currentMacroInts() else { return nil }
-
-        // Vain vaaditut kentät, ilman "_g" -päätteitä tai ylimääräisiä meta-arvoja
         let payload: [String: Int] = [
             "carbs":   ints.carbs,
             "protein": ints.protein,
             "fat":     ints.fat
         ]
-
         guard JSONSerialization.isValidJSONObject(payload),
               let data = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
             return nil
         }
         return String(data: data, encoding: .utf8)
     }
-
-
-    // MARK: - Shortcuts: no-arg wrapper, käyttää compact JSONia
 
     func runShortcutWithOptionalJSON() {
         let name = shortcutName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -686,7 +637,8 @@ private func rawReasoningText() -> String {
         if shortcutSendJSON {
             jsonString = buildCompactShortcutJSON()
             if jsonString == nil {
-                shortcutAlertMessage = loc("Ei lähetettäviä arvoja. Tee analyysi ensin tai säädä arvoja.", en: "No values to send. Run an analysis first or adjust values.")
+                shortcutAlertMessage = loc("Ei lähetettäviä arvoja. Tee analyysi ensin tai säädä arvoja.",
+                                           en: "No values to send. Run an analysis first or adjust values.")
                 showShortcutAlert = true
                 return
             }
@@ -695,17 +647,15 @@ private func rawReasoningText() -> String {
         runShortcutWithOptionalJSON(shortcutName: name, json: jsonString)
     }
 
-
-    // Avaa iOS Shortcuts -appiin valitun Shortcutin ja välittää JSONin turvallisesti
     func runShortcutWithOptionalJSON(shortcutName: String, json: String?) {
         let trimmed = shortcutName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            shortcutAlertMessage = loc("Määritä Shortcuttin nimi asetuksissa.", en: "Define the Shortcut name in Settings.")
+            shortcutAlertMessage = loc("Määritä Shortcuttin nimi asetuksissa.",
+                                       en: "Define the Shortcut name in Settings.")
             showShortcutAlert = true
             return
         }
 
-        // Rakennetaan shortcuts://x-callback-url/run-shortcut?...
         var comps = URLComponents()
         comps.scheme = "shortcuts"
         comps.host   = "x-callback-url"
@@ -717,8 +667,6 @@ private func rawReasoningText() -> String {
             URLQueryItem(name: "x-error",   value: "mealai://error"),
             URLQueryItem(name: "x-cancel",  value: "mealai://cancel"),
         ]
-
-        // Välitä analyysin JSON Shortcutsille "input"-kentässä vain jos sitä löytyy
         if let j = json, !j.isEmpty {
             items.append(URLQueryItem(name: "input", value: j))
         }
@@ -738,7 +686,7 @@ private func rawReasoningText() -> String {
         }
     }
 
-    // ✅ Shortcuts x-callback tulkinta — sijoitettu ContentView’n SISÄLLE
+    // MARK: - x-callback
     private func handleCallbackURL(_ url: URL) {
         guard url.scheme == "mealai" else { return }
         let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
@@ -748,26 +696,18 @@ private func rawReasoningText() -> String {
             shortcutAlertMessage = loc("Pikakuvake suoritettu ✅", en: "Shortcut finished ✅")
             showShortcutAlert = true
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-
         case "error":
-            // yritetään poimia selitysteksti (esim. ?error=Something)
             let reason = comps?.queryItems?.first(where: { $0.name == "error" || $0.name == "message" })?.value
             shortcutAlertMessage = reason ?? loc("Pikakuvake epäonnistui ❌", en: "Shortcut failed ❌")
             showShortcutAlert = true
-
         case "cancel":
-            // Ei näytetä alertia peruutuksesta, mutta voit halutessa näyttää:
-            // shortcutAlertMessage = loc("Peruit Shortcutsin.", en: "Shortcut was cancelled.")
-            // showShortcutAlert = true
             break
-
         default:
             break
         }
     }
 
     // MARK: - Clear
-
     private func clearResultsOnly() {
         stageResult = nil
         errorMessage = nil
