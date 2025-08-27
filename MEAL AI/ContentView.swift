@@ -156,6 +156,23 @@ struct ContentView: View {
 
     // Offline
     @StateObject private var connectivity = Connectivity()
+   
+    /// Pyöristys 1 desimaaliin – sama logiikka kuin `formatted(_:)` käyttää
+    private func round1(_ v: Double) -> Double { ((v * 10).rounded()) / 10 }
+
+    /// Vertaa kahta arvoa 1 desimaalin tarkkuudella
+    private func equal1dp(_ a: Double, _ b: Double) -> Bool { round1(a) == round1(b) }
+
+    /// True, jos UI:n nykyiset arvot (carbs/fat/proteins) vastaavat AI:n tulosta 1 desimaalin tarkkuudella
+    private var isAtAIDefaults: Bool {
+        guard let s = stageResult else { return true } // ei tulosta → ei tarvetta napille
+        let uiC = carbsVal   ?? s.analysis.totals.carbs_g
+        let uiF = fatVal     ?? s.analysis.totals.fat_g
+        let uiP = proteinVal ?? s.analysis.totals.protein_g
+        return equal1dp(uiC, s.analysis.totals.carbs_g)
+            && equal1dp(uiF, s.analysis.totals.fat_g)
+            && equal1dp(uiP, s.analysis.totals.protein_g)
+    }
 
     var body: some View {
         NavigationView {
@@ -332,9 +349,10 @@ struct ContentView: View {
 
             // Palauta AI-arvot
             Button {
+                guard !isAtAIDefaults else { return } // hiljainen, jos jo samat
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 withAnimation(.easeInOut(duration: 0.15)) {
-                    syncUIValuesFromStage()
+                    syncUIValuesFromStage() // palauttaa UI-arvot mallin tulokseen
                 }
             } label: {
                 Text(loc("Palauta AI-arvot", en: "Reset to AI values"))
@@ -344,6 +362,8 @@ struct ContentView: View {
                     .background(Color(.tertiarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
+            .disabled(isAtAIDefaults)              // estä painallus, jos ei muutettavaa
+            .opacity(isAtAIDefaults ? 0.5 : 1.0)   // visuaalisesti “hiljaisempi”
             .buttonStyle(PressableButtonStyle())
         }
         .padding(16)
