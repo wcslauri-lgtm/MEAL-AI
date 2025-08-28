@@ -1,7 +1,7 @@
 import Foundation
 
 // Syötä oma OpenAI API-avain tähän
-let OPENAI_API_KEY = "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"
+let OPENAI_API_KEY = "INSERT_YOUR_OWN_OPENAI_API_KEY"
 
 
 enum OpenAIModel: String {
