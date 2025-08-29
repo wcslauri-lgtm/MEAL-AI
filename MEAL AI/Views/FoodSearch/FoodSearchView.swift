@@ -78,8 +78,6 @@ struct FoodSearchView: View {
         .sheet(item: $result) { r in
             FoodSearchResultView(result: r) { favName in
                 FavoritesStore.shared.add(name: favName, result: r)
-            } onSendToShortcuts: {
-                ShortcutsSender.sendToShortcuts(stage: r)
             }
         }
         .onDisappear { stopVoice() }

@@ -22,7 +22,7 @@ enum ShortcutsSender {
             .init(name: "x-error", value: "mealai://error")
         ]
         if sendJSON {
-            let payload = ["carbs": c, "fat": f, "protein": p]
+            let payload = ["carbs": c, "protein": p, "fat": f]
             if let data = try? JSONSerialization.data(withJSONObject: payload),
                let s = String(data: data, encoding: .utf8) {
                 items.append(.init(name: "input", value: s))

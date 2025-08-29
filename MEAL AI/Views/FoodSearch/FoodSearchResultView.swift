@@ -3,7 +3,6 @@ import SwiftUI
 struct FoodSearchResultView: View {
     let result: StageMealResult
     var onAddFavorite: (String) -> Void
-    var onSendToShortcuts: () -> Void
 
     @State private var favName: String = ""
     @State private var showFavSheet = false
@@ -29,7 +28,7 @@ struct FoodSearchResultView: View {
                 .buttonStyle(.bordered)
 
                 Button {
-                    onSendToShortcuts()
+                    ShortcutsSender.sendToShortcuts(stage: result)
                 } label: {
                     Label("Lähetä iAPS (Shortcut)", systemImage: "bolt")
                 }
