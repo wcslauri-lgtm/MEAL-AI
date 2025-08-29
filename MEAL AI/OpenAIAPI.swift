@@ -96,7 +96,11 @@ final class OpenAIAPI {
         let choices = (obj?["choices"] as? [[String: Any]]) ?? []
         guard let message = choices.first?["message"] as? [String: Any] else {
             let raw = String(data: data, encoding: .utf8) ?? ""
-            throw NSError(domain: "OpenAIAPI", code: -2, userInfo: [NSLocalizedDescriptionKey: "Empty choices.message. Raw: \(raw.prefix(400))"])
+            throw NSError(
+                domain: "OpenAIAPI",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "Empty choices.message. Raw: \(raw.prefix(400))"]
+            )
         }
 
         if let text = message["content"] as? String,
