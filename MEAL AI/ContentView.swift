@@ -68,8 +68,8 @@ struct AutoRepeatCircleButton: View {
     let onRepeat: () -> Void
 
     @State private var timer: Timer?
-    private let interval: TimeInterval = 0.35
-    private let longPressThreshold: TimeInterval = 0.7
+    private let interval: TimeInterval = 0.4
+    private let longPressThreshold: TimeInterval = 0.8
 
     var body: some View {
         Text(title)
@@ -83,13 +83,14 @@ struct AutoRepeatCircleButton: View {
                 UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
             }
             .onLongPressGesture(minimumDuration: longPressThreshold, maximumDistance: 44, pressing: { pressing in
-                if pressing {
-                    startTimer()
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                } else {
+                if !pressing {
                     stopTimer()
                 }
-            }, perform: { })
+            }) {
+                onRepeat()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                startTimer()
+            }
             .buttonStyle(PressableButtonStyle())
     }
 
@@ -374,7 +375,7 @@ struct ContentView: View {
                 .frame(width: 95, alignment: .leading)
 
             AutoRepeatCircleButton(
-                title: "−",
+                title: "−1",
                 bgColor: .appMinusRed,
                 size: 32,
                 onTap: { value.wrappedValue = max(0, value.wrappedValue - 1) },
@@ -386,7 +387,7 @@ struct ContentView: View {
                 .frame(minWidth: 80, alignment: .center)
 
             AutoRepeatCircleButton(
-                title: "+",
+                title: "+1",
                 bgColor: .appPlusGreen,
                 size: 32,
                 onTap: { value.wrappedValue = value.wrappedValue + 1 },
