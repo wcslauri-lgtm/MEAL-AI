@@ -1,18 +1,15 @@
+
 import Foundation
-
-// Syötä oma OpenAI API-avain tähän
-let OPENAI_API_KEY = "INSERT_YOUR_OWN_OPENAI_API_KEY"
-
 
 enum OpenAIModel: String {
     case gpt4oMini = "gpt-4o-mini"
     case gpt5      = "gpt-5"
-    case gpt5Mini  = "gpt-5-mini"   // ei pakollinen, mutta jätetään mahdolliseksi
+    case gpt5Mini  = "gpt-5-mini"
     case gpt5Nano  = "gpt-5-nano"
 }
 
 final class OpenAIAPI {
-    private let apiKey: String
+    var apiKey: String
     private let session: URLSession
     private let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
 
@@ -24,8 +21,6 @@ final class OpenAIAPI {
         self.session = URLSession(configuration: cfg)
     }
 
-    /// Yhdistetty chat-metodi tekstille ja kuvalle (vision).
-    /// Temperature lähetetään vain 4o-mini:lle. Ei `stop`-parametria. `response_format: json_object` pakottaa JSONin.
     func sendChat(
         model: OpenAIModel,
         systemPrompt: String,
@@ -36,7 +31,6 @@ final class OpenAIAPI {
         forceJSON: Bool = true
     ) async throws -> String {
 
-        // 1) heti alussa – jos käyttäjä ehti peruuttaa ennen kutsua
         try Task.checkCancellation()
 
         var req = URLRequest(url: endpoint)
@@ -44,13 +38,11 @@ final class OpenAIAPI {
         req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // Rakenna messages
         var messages: [[String: Any]] = [
             ["role": "system", "content": systemPrompt]
         ]
 
         if let imageData = imageData {
-            // 2) juuri ennen raskasta base64:ää
             try Task.checkCancellation()
 
             let base64 = imageData.base64EncodedString()
@@ -71,7 +63,6 @@ final class OpenAIAPI {
             ])
         }
 
-        // Body
         var body: [String: Any] = [
             "model": model.rawValue,
             "messages": messages,
@@ -87,14 +78,10 @@ final class OpenAIAPI {
 
         req.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
 
-        // 3) juuri ennen verkko-odotusta
         try Task.checkCancellation()
 
-        // Verkko-operaatio: kun ympäröivä Task peruutetaan,
-        // tämä heittää CancellationErrorin tai URLError.cancelled (-999)
         let (data, resp) = try await session.data(for: req)
 
-        // 4) heti verkon jälkeen, ennen raskaampaa JSON-dekoodausta
         try Task.checkCancellation()
 
         guard let http = resp as? HTTPURLResponse else {
@@ -105,7 +92,6 @@ final class OpenAIAPI {
             throw NSError(domain: "OpenAIAPI", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: raw])
         }
 
-        // Decode – tue String / [parts] / {text:...}
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let choices = (obj?["choices"] as? [[String: Any]]) ?? []
         guard let message = choices.first?["message"] as? [String: Any] else {
@@ -145,4 +131,4 @@ final class OpenAIAPI {
             userInfo: [NSLocalizedDescriptionKey: "Empty content in response. Raw: \(rawStr.prefix(800))"]
         )
     }
-    }
+}

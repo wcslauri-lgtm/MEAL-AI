@@ -21,7 +21,8 @@ final class MealAnalyzer {
     }
 
     private init() {
-        self.api = OpenAIAPI(apiKey: OPENAI_API_KEY)
+        let key = KeychainHelper.shared.get("openai_api_key") ?? ""
+        self.api = OpenAIAPI(apiKey: key)
     }
 
     /// Suorittaa analyysin annetusta kuvadatasta.
@@ -37,6 +38,9 @@ final class MealAnalyzer {
 
         // 1.5) Peruutustarkistus ennen verkkoa
         try Task.checkCancellation()
+
+        // 2) Päivitä API-avain Keychainista ennen kutsua
+        self.api.apiKey = KeychainHelper.shared.get("openai_api_key") ?? ""
 
         // 2) Kutsu OpenAI (retry/backoff kääreellä)
         let raw = try await withRetry {
