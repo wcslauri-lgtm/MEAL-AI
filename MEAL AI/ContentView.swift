@@ -109,15 +109,10 @@ struct AutoRepeatCircleButton: View {
 }
 
 struct ContentView: View {
-    // Kieli & asetukset
-    @AppStorage("appLanguage") private var appLanguage: String = "FI"
-    @AppStorage("showHintField") private var showHintField = true
-
-    // Shortcut
+    // Shortcut settings
     @AppStorage("shortcutEnabled") private var shortcutEnabled = true
     @AppStorage("shortcutName") private var shortcutName = ""
     @AppStorage("shortcutSendJSON") private var shortcutSendJSON = true
-    @AppStorage("preferSmallerOnCellular") private var preferSmallerOnCellular = false
 
 
     // Kuva & picker
@@ -181,14 +176,12 @@ struct ContentView: View {
                     VStack(spacing: 16) {
                         imagePreview
 
-                        if showHintField {
-                            TextField(
-                                loc("Lisävihje (valinnainen)", en: "Optional hint (e.g., weights, sauces)"),
-                                text: $userHintText
-                            )
-                            .textFieldStyle(.roundedBorder)
-                            .padding(.horizontal)
-                        }
+                        TextField(
+                            loc("Lisävihje (valinnainen)", en: "Optional hint (e.g., weights, sauces)"),
+                            text: $userHintText
+                        )
+                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal)
 
                         if isRunning {
                             VStack(spacing: 8) {
@@ -252,10 +245,6 @@ struct ContentView: View {
                         .buttonStyle(PressableButtonStyle())
                     }
 
-                    NavigationLink(destination: SettingsView()) {
-                        Image(systemName: "gearshape")
-                    }
-                    .buttonStyle(PressableButtonStyle())
                 }
             }
             .fullScreenCover(isPresented: $showFoodSearch) {
@@ -550,7 +539,7 @@ struct ContentView: View {
         }
 
         // Valitse max-dimensio mobiiliverkon ja asetuksen perusteella
-        let maxDim: CGFloat = (connectivity.isCellular && preferSmallerOnCellular) ? 1024 : 1280
+        let maxDim: CGFloat = connectivity.isCellular ? 1024 : 1280
 
         // Valmistele data taustalla
         let data: Data
@@ -657,7 +646,7 @@ struct ContentView: View {
     }
 
     private func loc(_ fi: String, en: String? = nil) -> String {
-        if appLanguage == "FI" { return fi }
+        if Locale.preferredLanguages.first?.hasPrefix("fi") == true { return fi }
         return en ?? fi
     }
 

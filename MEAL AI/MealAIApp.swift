@@ -4,7 +4,7 @@ import SwiftUI
 struct MealAIApp: App {
     var body: some Scene {
         WindowGroup {
-            AppRootView()
+            ContentView()
         }
     }
 }
