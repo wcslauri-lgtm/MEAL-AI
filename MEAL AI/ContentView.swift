@@ -122,7 +122,7 @@ struct ContentView: View {
 
     // Kuva & picker
     @State private var selectedImage: UIImage?
-    @State private var showCamera = false
+    @State private var showFoodSearch = false
     @State private var showLibrary = false
 
     // Prosessin tila
@@ -258,8 +258,8 @@ struct ContentView: View {
                     .buttonStyle(PressableButtonStyle())
                 }
             }
-            .fullScreenCover(isPresented: $showCamera) {
-                ImagePicker(sourceType: .camera) { image in
+            .fullScreenCover(isPresented: $showFoodSearch) {
+                FoodSearchView { image in
                     selectedImage = image
                     clearResultsOnly()
                 }
@@ -431,11 +431,11 @@ struct ContentView: View {
         HStack(spacing: 12) {
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                openCamera()
+                startFoodSearch()
             } label: {
                 VStack {
-                    Image(systemName: "camera")
-                    Text(loc("Ota kuva", en: "Camera"))
+                    Image(systemName: "fork.knife")
+                    Text(loc("Ruokahaku", en: "Food Search"))
                 }
             }
             .buttonStyle(PressableButtonStyle())
@@ -477,19 +477,19 @@ struct ContentView: View {
         .background(Color(UIColor.systemGray6))
     }
 
-    // MARK: - Kamera
-    private func openCamera() {
+    // MARK: - Food Search
+    private func startFoodSearch() {
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
             showLibrary = true
             return
         }
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            DispatchQueue.main.async { self.showCamera = true }
+            DispatchQueue.main.async { self.showFoodSearch = true }
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 DispatchQueue.main.async {
-                    if granted { self.showCamera = true }
+                    if granted { self.showFoodSearch = true }
                     else { self.showLibrary = true }
                 }
             }
